@@ -49,7 +49,7 @@ String generateEditorHtml(RichEditorTheme theme) {
 
   #editor {
     width: 100%;
-    min-height: 100%;
+    height: 100%;
     padding: ${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px;
     font-family: $fontFamily;
     font-size: ${fontSize}px;
@@ -531,6 +531,7 @@ String generateEditorHtml(RichEditorTheme theme) {
         document.body.style.height = 'auto';
         document.body.style.overflow = 'visible';
         editor.style.overflowY = 'visible';
+        editor.style.height = 'auto';
         editor.style.minHeight = 'auto';
         setTimeout(reportHeight, 100);
       }

@@ -1,3 +1,7 @@
+## 0.1.5
+
+* Fixed editor height: use `height: 100%` instead of `min-height: 100%` in CSS, and reset to `height: auto` alongside `minHeight: auto` when auto-resizing.
+
 ## 0.1.4
 
 * Fixed web iframe pointer-events so Flutter dialogs (e.g. link dialog) correctly receive pointer events when shown on top of the editor.
