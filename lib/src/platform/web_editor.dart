@@ -49,7 +49,7 @@ class _WebEditorState extends State<WebEditor> {
         ..style.setProperty('border', 'none')
         ..style.setProperty('width', '100%')
         ..style.setProperty('height', '100%')
-        ..srcdoc = generateEditorHtml(widget.theme).toJS as dynamic;
+        ..srcdoc = generateEditorHtml(widget.theme, channelId: _viewType).toJS as dynamic;
 
       // Wire up JS evaluation via the iframe's contentWindow
       widget.controller.evaluateJavascript = (String js) async {
@@ -80,7 +80,11 @@ class _WebEditorState extends State<WebEditor> {
         final data = event.data.dartify();
         if (data is String) {
           final decoded = jsonDecode(data);
-          if (decoded is Map && decoded.containsKey('type')) {
+          // Only handle messages from THIS editor's own iframe. Every editor iframe postMessages to
+          // the same window, so without this id check each controller would receive every other
+          // editor's events (e.g. a read-only viewer's content leaking into an open compose editor).
+          // channelId is stamped by generateEditorHtml with this view's unique id.
+          if (decoded is Map && decoded.containsKey('type') && decoded['channelId'] == _viewType) {
             widget.controller.handleMessage(data);
           }
         }

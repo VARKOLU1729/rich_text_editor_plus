@@ -45,6 +45,14 @@ class RichTextEditor extends StatefulWidget {
   /// Called when the editor loses focus.
   final VoidCallback? onBlur;
 
+  /// Called with the wheel delta when the editor is scrolled past its own scroll boundary, so an
+  /// enclosing scroll view can continue (scroll chaining across the web iframe boundary).
+  final void Function(double deltaY)? onOverscroll;
+
+  /// Called with the wheel delta on every wheel event over the editor (web), regardless of scroll
+  /// position. See [RichEditorController.onWheel].
+  final void Function(double deltaY)? onWheel;
+
   /// Height of the editor area (not including toolbar).
   /// Defaults to 300 if not specified.
   final double? editorHeight;
@@ -71,6 +79,8 @@ class RichTextEditor extends StatefulWidget {
     this.onChanged,
     this.onFocus,
     this.onBlur,
+    this.onOverscroll,
+    this.onWheel,
     this.editorHeight,
     this.showToolbar = true,
     this.toolbarAtTop = true,
@@ -101,6 +111,12 @@ class _RichTextEditorState extends State<RichTextEditor> {
     if (oldWidget.onChanged != widget.onChanged) {
       widget.controller.onContentChanged = widget.onChanged;
     }
+    if (oldWidget.onOverscroll != widget.onOverscroll) {
+      widget.controller.onOverscroll = widget.onOverscroll;
+    }
+    if (oldWidget.onWheel != widget.onWheel) {
+      widget.controller.onWheel = widget.onWheel;
+    }
   }
 
   @override
@@ -112,6 +128,8 @@ class _RichTextEditorState extends State<RichTextEditor> {
   void _wireController() {
     widget.controller.onContentChanged = widget.onChanged;
     widget.controller.onLinkRequest = _handleLinkRequest;
+    widget.controller.onOverscroll = widget.onOverscroll;
+    widget.controller.onWheel = widget.onWheel;
     widget.controller.addListener(_onControllerChanged);
   }
 
@@ -119,6 +137,8 @@ class _RichTextEditorState extends State<RichTextEditor> {
     controller.removeListener(_onControllerChanged);
     controller.onContentChanged = null;
     controller.onLinkRequest = null;
+    controller.onOverscroll = null;
+    controller.onWheel = null;
   }
 
   void _onControllerChanged() {

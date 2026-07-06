@@ -14,7 +14,10 @@ import '../theme.dart';
 ///   { type: 'focus' }
 ///   { type: 'blur' }
 ///   { type: 'linkRequest' }  (when user presses Ctrl+K)
-String generateEditorHtml(RichEditorTheme theme) {
+///
+/// Every message is stamped with `channelId` (the host's unique view id) so a host that hosts
+/// multiple editors on the same window can route each message to the matching editor only.
+String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
   final bgColor = _colorToCss(theme.editorBackground);
   final textColor = _colorToCss(theme.editorTextColor);
   final placeholderColor = _colorToCss(theme.placeholderColor);
@@ -122,6 +125,10 @@ String generateEditorHtml(RichEditorTheme theme) {
   // Communication: send messages to Flutter
   // -----------------------------------------------------------------------
   function sendToFlutter(data) {
+    // Stamp the source editor id. On web every editor iframe postMessages to the SAME parent
+    // window, so the host must be able to tell which editor a message came from — otherwise
+    // each controller would process every other editor's events (cross-talk).
+    data.channelId = '$channelId';
     var msg = JSON.stringify(data);
     try {
       // Mobile WebView channel (Android/iOS)
@@ -575,6 +582,24 @@ String generateEditorHtml(RichEditorTheme theme) {
   editor.addEventListener('blur', function() {
     sendToFlutter({ type: 'blur' });
     reportContent();
+  });
+
+  // Scroll chaining: when the editor cannot scroll further in the wheel direction (or has no
+  // scrollable overflow at all), forward the delta to the Flutter host so an enclosing scroll
+  // view can continue. A web iframe otherwise swallows the wheel at its boundary and never
+  // bubbles it to the parent document.
+  editor.addEventListener('wheel', function(e) {
+    // Fire on EVERY wheel so a host can react to any scroll immediately (e.g. collapse a header on
+    // first scroll, in either direction) — independent of the editor's own scroll position.
+    sendToFlutter({ type: 'wheel', deltaY: e.deltaY });
+    // Additionally, at the scroll boundary (or when there's no scrollable overflow) forward the delta
+    // so an enclosing scroll view can continue (scroll chaining across the iframe boundary).
+    var atTop = editor.scrollTop <= 0;
+    var atBottom = editor.scrollTop + editor.clientHeight >= editor.scrollHeight - 1;
+    var noScroll = editor.scrollHeight <= editor.clientHeight;
+    if (noScroll || (e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+      sendToFlutter({ type: 'overscroll', deltaY: e.deltaY });
+    }
   });
 
   // Paste: let the browser handle it natively, then report changes

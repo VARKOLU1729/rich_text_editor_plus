@@ -52,6 +52,15 @@ class RichEditorController extends ChangeNotifier {
   /// Callback when Ctrl+K requests a link dialog.
   LinkRequestCallback? onLinkRequest;
 
+  /// Called with the wheel delta when the editor is scrolled past its own scroll boundary, so a
+  /// host scroll view can continue scrolling (scroll chaining across the web iframe boundary).
+  void Function(double deltaY)? onOverscroll;
+
+  /// Called with the wheel delta on EVERY wheel event over the editor (web), regardless of scroll
+  /// position or direction — for hosts that want to react to any scroll (e.g. collapse a header on
+  /// the first scroll).
+  void Function(double deltaY)? onWheel;
+
   /// Internal: set by WebEditor on web to toggle the iframe's pointer-events.
   /// Pass null to unregister.
   void Function(bool enable)? _pointerEventsCallback;
@@ -175,6 +184,14 @@ class RichEditorController extends ChangeNotifier {
 
         case 'linkRequest':
           onLinkRequest?.call();
+          break;
+
+        case 'overscroll':
+          onOverscroll?.call((data['deltaY'] as num?)?.toDouble() ?? 0);
+          break;
+
+        case 'wheel':
+          onWheel?.call((data['deltaY'] as num?)?.toDouble() ?? 0);
           break;
 
         default:
