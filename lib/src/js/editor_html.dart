@@ -65,6 +65,18 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     white-space: pre-wrap;
   }
 
+  /* Slim scrollbar on the editor so long bodies show a scroll indicator on the right. */
+  #editor::-webkit-scrollbar {
+    width: 8px;
+  }
+  #editor::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.28);
+    border-radius: 4px;
+  }
+  #editor::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   #editor:empty:before {
     content: attr(data-placeholder);
     color: $placeholderColor;
@@ -540,7 +552,19 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
         editor.style.overflowY = 'visible';
         editor.style.height = 'auto';
         editor.style.minHeight = 'auto';
-        setTimeout(reportHeight, 100);
+        setTimeout(fitReadOnlyWidth, 100);
+        // Re-fit / re-measure as images finish loading (plus a later safety net):
+        // late signature images change width and height, so refit to the viewport
+        // width and re-report the resulting height. This also avoids the read-only
+        // iframe overflowing (which would show its own extra scrollbar).
+        var roImgs = editor.querySelectorAll('img');
+        for (var ri = 0; ri < roImgs.length; ri++) {
+          if (!roImgs[ri].complete) {
+            roImgs[ri].addEventListener('load', fitReadOnlyWidth);
+            roImgs[ri].addEventListener('error', fitReadOnlyWidth);
+          }
+        }
+        setTimeout(fitReadOnlyWidth, 600);
       }
     }
   };
@@ -550,6 +574,40 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
   // -----------------------------------------------------------------------
   function reportHeight() {
     sendToFlutter({ type: 'heightChanged', height: document.body.scrollHeight });
+  }
+
+  // Read-only fit-to-width: wide content (e.g. a 500px signature table) would
+  // overflow a narrow mobile viewport. Scale the whole body down with CSS zoom so
+  // it fits the width — like Gmail's mobile "fit to width" — instead of needing an
+  // awkward horizontal scroll. zoom (unlike transform) shrinks layout height too,
+  // so the reported height stays correct. Only ever shrinks (min with 1), so it is
+  // a no-op when the content already fits (e.g. desktop web).
+  function fitReadOnlyWidth() {
+    document.body.style.zoom = '1';
+    var viewWidth = document.documentElement.clientWidth || window.innerWidth || 0;
+    var contentWidth = document.body.scrollWidth;
+    if (viewWidth > 0 && contentWidth > viewWidth) {
+      document.body.style.zoom = String(viewWidth / contentWidth);
+    }
+    // Report the rendered (zoom-applied) height so the host sizes the iframe right.
+    sendToFlutter({ type: 'heightChanged', height: Math.ceil(document.body.getBoundingClientRect().height) });
+  }
+
+  // Rewrite Gmail image-proxy srcs (…googleusercontent.com/…#<original>) back to
+  // the embedded original URL so pasted Gmail signatures render in the editor
+  // instead of showing broken proxied images. Proxy srcs without a '#<url>'
+  // fragment (e.g. Gmail's private mail-sig photos) have no public source and are
+  // left as-is.
+  function unwrapProxiedImages() {
+    var imgs = editor.querySelectorAll('img');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = imgs[i].getAttribute('src') || '';
+      if (src.indexOf('googleusercontent.com') === -1) continue;
+      var hashIdx = src.indexOf('#http');
+      if (hashIdx !== -1) {
+        imgs[i].setAttribute('src', src.substring(hashIdx + 1));
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -602,9 +660,11 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     }
   });
 
-  // Paste: let the browser handle it natively, then report changes
+  // Paste: let the browser handle it natively, then unwrap any Gmail image-proxy
+  // srcs and report changes.
   editor.addEventListener('paste', function(e) {
     setTimeout(function() {
+      unwrapProxiedImages();
       reportContent();
       reportSelectionStyle();
     }, 50);

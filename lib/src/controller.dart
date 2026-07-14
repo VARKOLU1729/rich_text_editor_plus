@@ -61,6 +61,11 @@ class RichEditorController extends ChangeNotifier {
   /// the first scroll).
   void Function(double deltaY)? onWheel;
 
+  /// Called with a link's URL when it is tapped in a (read-only) body. The mobile
+  /// WebView blocks in-editor navigation, so the host opens the URL externally
+  /// (e.g. url_launcher). On web, links open natively so this is unused.
+  void Function(String url)? onLinkTap;
+
   /// Internal: set by WebEditor on web to toggle the iframe's pointer-events.
   /// Pass null to unregister.
   void Function(bool enable)? _pointerEventsCallback;
@@ -90,8 +95,27 @@ class RichEditorController extends ChangeNotifier {
   /// optimistic formatting fields set by the most recent toggle.
   static const int _toggleGuardMs = 200;
 
-  /// Function to evaluate JavaScript. Set by the platform editor widget.
-  Future<String?> Function(String js)? evaluateJavascript;
+  /// Function to evaluate JavaScript. Set by the platform editor widget once the
+  /// WebView/iframe can run JS. Assigning it drains any commands queued before it
+  /// was available — e.g. an initial setHtml/setReadOnly that arrived with the
+  /// 'ready' event before the mobile WebView wired this in onPageFinished.
+  Future<String?> Function(String js)? _evaluateJavascript;
+  Future<String?> Function(String js)? get evaluateJavascript => _evaluateJavascript;
+  set evaluateJavascript(Future<String?> Function(String js)? fn) {
+    _evaluateJavascript = fn;
+    _flushIfReady();
+  }
+
+  /// Runs any queued commands once the editor is ready AND a JS executor exists.
+  /// Iterates a copy so commands re-queued mid-flush can't corrupt the iteration.
+  void _flushIfReady() {
+    if (!_isReady || _evaluateJavascript == null) return;
+    final List<String> pending = List<String>.from(_commandQueue);
+    _commandQueue.clear();
+    for (final js in pending) {
+      _evaluateJavascript!(js);
+    }
+  }
 
   /// Optional initial HTML content to load when the editor is ready.
   String? initialHtml;
@@ -159,11 +183,9 @@ class RichEditorController extends ChangeNotifier {
           if (readOnly) {
             _executeJs("window.editorBridge.setReadOnly(true)");
           }
-          // Flush queued commands
-          for (final js in _commandQueue) {
-            _executeJs(js);
-          }
-          _commandQueue.clear();
+          // Flush queued commands — safe against the mobile race where 'ready'
+          // arrives before evaluateJavascript is wired (the setter re-flushes then).
+          _flushIfReady();
           notifyListeners();
           break;
 
@@ -379,16 +401,16 @@ class RichEditorController extends ChangeNotifier {
   // -----------------------------------------------------------------------
 
   void _executeJs(String js) {
-    if (_isReady && evaluateJavascript != null) {
-      evaluateJavascript!(js);
+    if (_isReady && _evaluateJavascript != null) {
+      _evaluateJavascript!(js);
     } else {
       _commandQueue.add(js);
     }
   }
 
   Future<String?> _executeJsWithResult(String js) async {
-    if (evaluateJavascript != null) {
-      return evaluateJavascript!(js);
+    if (_evaluateJavascript != null) {
+      return _evaluateJavascript!(js);
     }
     return null;
   }

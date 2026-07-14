@@ -56,13 +56,13 @@ class _MobileEditorState extends State<MobileEditor> {
               };
             }
           },
-          // Prevent navigation away from the editor
+          // Keep the editor's own WebView on its document; hand real links to the
+          // host (onLinkTap) to open externally instead of navigating in place.
           onNavigationRequest: (NavigationRequest request) {
             if (request.url.startsWith('data:') || request.url == 'about:blank') {
               return NavigationDecision.navigate;
             }
-            // External links: prevent navigation.
-            // You could open them externally via url_launcher here.
+            widget.controller.onLinkTap?.call(request.url);
             return NavigationDecision.prevent;
           },
         ),
