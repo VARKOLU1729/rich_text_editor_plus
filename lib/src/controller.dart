@@ -311,6 +311,21 @@ class RichEditorController extends ChangeNotifier {
     _executeJs("window.editorBridge.setReadOnly(${value ? 'true' : 'false'})");
   }
 
+  /// Toggle editable auto-height mode at runtime.
+  ///
+  /// When [value] is true the editor grows to fit its content and reports its
+  /// height (via `heightChanged`), so a parent scroll view can scroll through
+  /// the whole body. When false it reverts to a fixed height with its own inner
+  /// scroll; the stale [contentHeight] is cleared so the editor falls back to
+  /// the host-provided height immediately.
+  void setAutoHeight(bool value) {
+    _executeJs("window.editorBridge.setAutoHeight(${value ? 'true' : 'false'})");
+    if (!value && _contentHeight != null) {
+      _contentHeight = null;
+      notifyListeners();
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Toolbar action dispatch
   // -----------------------------------------------------------------------

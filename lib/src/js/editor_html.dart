@@ -132,6 +132,12 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
   var editor = document.getElementById('editor');
   var isComposing = false;
   var debounceTimer = null;
+  // When true the editable editor grows to fit its content and reports its
+  // height to Flutter on every edit, so a parent page-scroll can move through
+  // the whole body (instead of the body owning its own inner scroll). Toggled
+  // by setAutoHeight() — off by default so nothing changes for callers that
+  // don't opt in.
+  var autoHeight = false;
 
   // -----------------------------------------------------------------------
   // Communication: send messages to Flutter
@@ -566,6 +572,33 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
         }
         setTimeout(fitReadOnlyWidth, 600);
       }
+    },
+
+    // Toggle editable auto-height mode. When enabled, the editor stops owning an
+    // inner scroll and instead grows to its content height, reporting that height
+    // to Flutter so a parent scroll view can scroll through the whole body. When
+    // disabled, the editor reverts to a fixed height with its own inner scroll
+    // (the normal editable behaviour used while typing).
+    setAutoHeight: function(value) {
+      autoHeight = !!value;
+      if (autoHeight) {
+        document.documentElement.style.height = 'auto';
+        document.documentElement.style.overflow = 'visible';
+        document.body.style.height = 'auto';
+        document.body.style.overflow = 'visible';
+        editor.style.overflowY = 'visible';
+        editor.style.height = 'auto';
+        editor.style.minHeight = 'auto';
+        setTimeout(reportHeight, 50);
+      } else {
+        document.documentElement.style.height = '100%';
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.height = '100%';
+        document.body.style.overflow = 'hidden';
+        editor.style.overflowY = 'auto';
+        editor.style.height = '100%';
+        editor.style.minHeight = '';
+      }
     }
   };
 
@@ -617,6 +650,9 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
   editor.addEventListener('input', function() {
     if (!isComposing) {
       reportContent();
+      // In auto-height mode the body must resize as the user types/pastes so the
+      // parent page-scroll always reaches the newest content.
+      if (autoHeight) reportHeight();
     }
   });
 
