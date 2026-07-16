@@ -376,12 +376,14 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
   // -----------------------------------------------------------------------
   function reportSelectionStyle() {
     var linkUrl = null;
+    var linkText = null;
     var sel = window.getSelection();
     if (sel && sel.rangeCount > 0) {
       var node = sel.anchorNode;
       while (node && node !== editor) {
         if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === 'a') {
           linkUrl = node.getAttribute('href');
+          linkText = node.textContent;
           break;
         }
         node = node.parentNode;
@@ -417,6 +419,7 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
       orderedList: document.queryCommandState('insertOrderedList'),
       unorderedList: document.queryCommandState('insertUnorderedList'),
       linkUrl: linkUrl,
+      linkText: linkText,
       alignment: alignment
     });
   }
@@ -456,6 +459,21 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     insertLink: function(url, text) {
       editor.focus();
       var sel = window.getSelection();
+      // Editing: selection inside an existing anchor → update it in place. Without
+      // this, a collapsed cursor would insert a second anchor next to the first
+      // (createLink is a no-op on a collapsed selection, and the text branch
+      // creates a brand-new <a>).
+      var node = sel && sel.rangeCount > 0 ? sel.anchorNode : null;
+      while (node && node !== editor) {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === 'a') {
+          node.setAttribute('href', url);
+          if (text && text !== node.textContent) node.textContent = text;
+          reportContent();
+          reportSelectionStyle();
+          return;
+        }
+        node = node.parentNode;
+      }
       if (sel.toString().length > 0) {
         document.execCommand('createLink', false, url);
       } else if (text) {

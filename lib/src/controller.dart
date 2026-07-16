@@ -160,6 +160,7 @@ class RichEditorController extends ChangeNotifier {
               isOrderedList: data['orderedList'] == true,
               isUnorderedList: data['unorderedList'] == true,
               linkUrl: data['linkUrl'] as String?,
+              linkText: data['linkText'] as String?,
               alignment: (data['alignment'] as String?) ?? 'left',
             );
           } else {

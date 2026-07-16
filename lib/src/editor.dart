@@ -64,6 +64,8 @@ class RichTextEditor extends StatefulWidget {
   final bool toolbarAtTop;
 
   /// Custom link dialog builder. If null, a default Material dialog is shown.
+  /// When editing an existing link, its display text is available via
+  /// `controller.selectionStyle.linkText`.
   final Future<LinkDialogResult?> Function(BuildContext context, String? currentUrl)? onLinkDialog;
 
   /// Optional custom toolbar widget. When provided, this widget is rendered
@@ -180,7 +182,7 @@ class _RichTextEditorState extends State<RichTextEditor> {
 
   Future<LinkDialogResult?> _showDefaultLinkDialog(BuildContext context, String? currentUrl) async {
     final urlController = TextEditingController(text: currentUrl ?? '');
-    final textController = TextEditingController();
+    final textController = TextEditingController(text: currentUrl != null ? (widget.controller.selectionStyle.linkText ?? '') : '');
 
     return showDialog<LinkDialogResult>(
       context: context,
