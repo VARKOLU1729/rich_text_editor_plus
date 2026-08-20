@@ -601,9 +601,15 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
       autoHeight = !!value;
       if (autoHeight) {
         document.documentElement.style.height = 'auto';
-        document.documentElement.style.overflow = 'visible';
+        // hidden, not visible: the host resizes this frame to the height we report, and that costs a
+        // message hop plus a frame — so on every newline the document is briefly taller than the
+        // frame. With 'visible' the browser paints its own scrollbar for those few milliseconds and
+        // then removes it again: a scrollbar blinking on every Enter. Clipping that sliver instead is
+        // invisible (it is the blank line just added, and the host has caught up by the next frame),
+        // and scrollHeight — what reportHeight measures — is not affected by overflow.
+        document.documentElement.style.overflow = 'hidden';
         document.body.style.height = 'auto';
-        document.body.style.overflow = 'visible';
+        document.body.style.overflow = 'hidden';
         editor.style.overflowY = 'visible';
         editor.style.height = 'auto';
         editor.style.minHeight = 'auto';
@@ -712,6 +718,16 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     if (noScroll || (e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
       sendToFlutter({ type: 'overscroll', deltaY: e.deltaY });
     }
+  });
+
+  // In auto-height mode this frame must never hold a scroll offset of its own — the host sizes it to
+  // the content and scrolls the page instead. If the browser scrolls the caret into view during the
+  // frame or two before the host catches up, that offset would stick: overflow is hidden, so nothing
+  // could ever scroll it back and the top of the body would stay cut off. Snap it back to 0.
+  window.addEventListener('scroll', function() {
+    if (!autoHeight) return;
+    if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+    if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
   });
 
   // Paste: let the browser handle it natively, then unwrap any Gmail image-proxy
