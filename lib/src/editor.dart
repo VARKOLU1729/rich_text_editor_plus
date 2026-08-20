@@ -107,7 +107,7 @@ class _RichTextEditorState extends State<RichTextEditor> {
   void didUpdateWidget(covariant RichTextEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      _unwireController(oldWidget.controller);
+      _unwireController(oldWidget.controller, oldWidget);
       _wireController();
     }
     if (oldWidget.onChanged != widget.onChanged) {
@@ -123,7 +123,7 @@ class _RichTextEditorState extends State<RichTextEditor> {
 
   @override
   void dispose() {
-    _unwireController(widget.controller);
+    _unwireController(widget.controller, widget);
     super.dispose();
   }
 
@@ -135,12 +135,17 @@ class _RichTextEditorState extends State<RichTextEditor> {
     widget.controller.addListener(_onControllerChanged);
   }
 
-  void _unwireController(RichEditorController controller) {
+  // Releases the controller's callback slots that [forWidget] put there. Each slot holds a single
+  // callback, and a controller can be handed from one editor to another (a compose surface that
+  // moves between hosts): the new editor wires itself up before the old one is disposed, so clearing
+  // unconditionally would strip the *live* editor's callbacks — leaving it with no scroll chaining,
+  // no link dialog and no change events. Only clear what is still ours.
+  void _unwireController(RichEditorController controller, RichTextEditor forWidget) {
     controller.removeListener(_onControllerChanged);
-    controller.onContentChanged = null;
-    controller.onLinkRequest = null;
-    controller.onOverscroll = null;
-    controller.onWheel = null;
+    if (controller.onContentChanged == forWidget.onChanged) controller.onContentChanged = null;
+    if (controller.onLinkRequest == _handleLinkRequest) controller.onLinkRequest = null;
+    if (controller.onOverscroll == forWidget.onOverscroll) controller.onOverscroll = null;
+    if (controller.onWheel == forWidget.onWheel) controller.onWheel = null;
   }
 
   void _onControllerChanged() {

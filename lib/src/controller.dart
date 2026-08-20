@@ -74,6 +74,13 @@ class RichEditorController extends ChangeNotifier {
     _pointerEventsCallback = callback;
   }
 
+  /// Unregisters [callback], but only if it is still the registered one — a later editor sharing this
+  /// controller may already have replaced it, and clearing that one would leave the live editor unable
+  /// to release its iframe's pointer events.
+  void clearPointerEventsCallback(void Function(bool enable) callback) {
+    if (identical(_pointerEventsCallback, callback)) _pointerEventsCallback = null;
+  }
+
   /// Disable pointer events on the editor iframe (call before showing a dialog on web).
   void disablePointerEvents() => _pointerEventsCallback?.call(false);
 
