@@ -4,6 +4,11 @@ import '../theme.dart';
 ///
 /// Communication protocol:
 ///   Flutter → JS:  evaluateJavascript calling window.editorBridge.*
+///                   On web the iframe is sandboxed without allow-same-origin
+///                   (see WebEditor), so the parent can't call contentWindow.eval()
+///                   directly; it instead posts { __exec, id, code } and this frame
+///                   eval's `code` in its own realm, replying with an __execResult
+///                   message carrying the same id.
 ///   JS → Flutter:  window.flutter_channel.postMessage(JSON.stringify({...}))
 ///                   On web: window.parent.postMessage(...)
 ///
@@ -14,6 +19,7 @@ import '../theme.dart';
 ///   { type: 'focus' }
 ///   { type: 'blur' }
 ///   { type: 'linkRequest' }  (when user presses Ctrl+K)
+///   { type: '__execResult', id: number, result: any }  (web only, reply to an __exec command)
 ///
 /// Every message is stamped with `channelId` (the host's unique view id) so a host that hosts
 /// multiple editors on the same window can route each message to the matching editor only.
@@ -666,6 +672,43 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
       }
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Command channel: Flutter -> this frame. Needed on web, where the parent
+  // can no longer call contentWindow.eval() on this sandboxed, cross-origin
+  // iframe directly (see WebEditor) — postMessage is the one channel the
+  // browser still allows across that boundary. `code` is the exact same
+  // "window.editorBridge.xxx(...)" string evaluateJavascript always sent, now
+  // eval'd here in this frame's own realm instead of the parent's, so every
+  // editorBridge.* call above behaves exactly as before. Mobile's WebView
+  // still runs JS directly and never sends this message.
+  //
+  // event.source is checked against window.parent so only the actual host
+  // frame can trigger this — not some unrelated window with a stray reference,
+  // and not this frame's own (possibly attacker-controlled) content posting to
+  // itself.
+  // -----------------------------------------------------------------------
+  window.addEventListener('message', function(event) {
+    // The message arrives as a JSON string (see WebEditor.evaluateJavascript), not
+    // a structured-clone object, so it must be parsed before any property access.
+    if (typeof event.data !== 'string' || event.source !== window.parent) return;
+    var data;
+    try {
+      data = JSON.parse(event.data);
+    } catch (e) {
+      return;
+    }
+    if (!data || data.__exec !== true) return;
+    var result;
+    try {
+      result = eval(data.code);
+    } catch (e) {
+      result = undefined;
+    }
+    if (data.id !== undefined && data.id !== null) {
+      sendToFlutter({ type: '__execResult', id: data.id, result: result });
+    }
+  });
 
   // -----------------------------------------------------------------------
   // Event listeners
