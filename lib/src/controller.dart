@@ -123,7 +123,15 @@ class RichEditorController extends ChangeNotifier {
   /// Whether the editor is read-only (non-editable).
   bool readOnly;
 
-  RichEditorController({this.initialHtml, this.readOnly = false});
+  /// Whether the editable editor is in auto-height mode — see [setAutoHeight].
+  ///
+  /// Persisted on the controller, like [readOnly] and [initialHtml], so it can be re-applied to a
+  /// fresh editor: a controller can outlive the editor widget it drives (a compose surface that moves
+  /// between two hosts, a minimise/restore, …) and every new editor starts in the default
+  /// fixed-height mode.
+  bool autoHeight;
+
+  RichEditorController({this.initialHtml, this.readOnly = false, this.autoHeight = false});
 
   // -----------------------------------------------------------------------
   // Handle messages from JS
@@ -183,6 +191,15 @@ class RichEditorController extends ChangeNotifier {
           }
           if (readOnly) {
             _executeJs("window.editorBridge.setReadOnly(true)");
+          }
+          // Re-assert auto-height on every editor that becomes ready, not just the one that was
+          // live when setAutoHeight() was called. Without this, a host that swaps editors under the
+          // same controller silently loses the setting: _isReady is still true from the previous
+          // editor, so the setAutoHeight() the new host sends on mount is executed against the old,
+          // dying iframe instead of being queued for the new one — which then keeps its own inner
+          // scroll and never reports a height.
+          if (autoHeight) {
+            _executeJs("window.editorBridge.setAutoHeight(true)");
           }
           // Flush queued commands — safe against the mobile race where 'ready'
           // arrives before evaluateJavascript is wired (the setter re-flushes then).
@@ -317,14 +334,18 @@ class RichEditorController extends ChangeNotifier {
   /// When [value] is true the editor grows to fit its content and reports its
   /// height (via `heightChanged`), so a parent scroll view can scroll through
   /// the whole body. When false it reverts to a fixed height with its own inner
-  /// scroll; the stale [contentHeight] is cleared so the editor falls back to
-  /// the host-provided height immediately.
+  /// scroll, and the stale [contentHeight] is dropped so the next build falls
+  /// back to the host-provided height.
   void setAutoHeight(bool value) {
+    // Remembered so a later editor can pick it up on its own 'ready' — see handleMessage.
+    autoHeight = value;
     _executeJs("window.editorBridge.setAutoHeight(${value ? 'true' : 'false'})");
-    if (!value && _contentHeight != null) {
-      _contentHeight = null;
-      notifyListeners();
-    }
+    // Cleared WITHOUT notifying, deliberately. Hosts switch auto-height off while tearing down (the
+    // usual reason being that they are handing this controller to another editor), and a notification
+    // dispatched from a dispose() reaches listeners whose elements are mid-unmount — asking them to
+    // rebuild while the widget tree is locked, which throws. Nothing is lost: whichever editor renders
+    // next reads the cleared value on its first build.
+    if (!value) _contentHeight = null;
   }
 
   // -----------------------------------------------------------------------
