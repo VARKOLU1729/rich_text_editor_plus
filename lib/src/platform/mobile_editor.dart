@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -42,8 +43,6 @@ class _MobileEditorState extends State<MobileEditor> {
         NavigationDelegate(
           // Keep the editor's own WebView on its document; hand real links to the
           // host (onLinkTap) to open externally instead of navigating in place.
-          // Keep the editor's own WebView on its document; hand real links to the
-          // host (onLinkTap) to open externally instead of navigating in place.
           onNavigationRequest: (NavigationRequest request) {
             if (request.url.startsWith('data:') || request.url == 'about:blank') {
               return NavigationDecision.navigate;
@@ -62,7 +61,7 @@ class _MobileEditorState extends State<MobileEditor> {
     widget.controller.evaluateJavascript = (String js) async {
       try {
         final result = await _webViewController.runJavaScriptReturningResult(js);
-        return result.toString();
+        return _decodeResult(result);
       } catch (e) {
         debugPrint('JS eval error: $e');
         return null;
@@ -77,6 +76,25 @@ class _MobileEditorState extends State<MobileEditor> {
       encoding: Encoding.getByName('utf-8'),
     ).toString();
     _webViewController.loadRequest(Uri.parse(dataUri));
+  }
+
+  /// What the JS actually returned, as a Dart string.
+  ///
+  /// Android's WebView hands back the JSON encoding of the result, so a string arrives wrapped in
+  /// quotes carrying its own escapes — `"<div>hi</div>"` for `<div>hi</div>`.
+  /// Passed on as-is that text is what callers read as the editor's HTML: getHtmlAsync() returns it,
+  /// a host writes it back with setHtml(), and every round trip escapes it again. iOS returns the
+  /// string itself, so only Android is decoded.
+  String? _decodeResult(Object result) {
+    final String text = result.toString();
+    if (defaultTargetPlatform != TargetPlatform.android) return text;
+    try {
+      final decoded = jsonDecode(text);
+      return decoded is String ? decoded : text;
+    } catch (_) {
+      // Not JSON — an older WebView, or a value it did not encode. Better the raw text than nothing.
+      return text;
+    }
   }
 
   @override
