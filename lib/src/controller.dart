@@ -102,14 +102,20 @@ class RichEditorController extends ChangeNotifier {
   /// optimistic formatting fields set by the most recent toggle.
   static const int _toggleGuardMs = 200;
 
-  /// Function to evaluate JavaScript. Set by the platform editor widget once the
-  /// WebView/iframe can run JS. Assigning it drains any commands queued before it
-  /// was available — e.g. an initial setHtml/setReadOnly that arrived with the
-  /// 'ready' event before the mobile WebView wired this in onPageFinished.
+  /// Function to evaluate JavaScript. Set by the platform editor widget as soon as it has a
+  /// WebView/iframe to run JS in. Assigning it drains any commands queued while there was none.
+  ///
+  /// A new editor claiming the channel also puts the controller back to not-ready: readiness belongs
+  /// to a document, and the incoming editor's has not loaded yet. Without that, a controller handed
+  /// between editors carries `_isReady` over from the old one and every command sent before the new
+  /// document announces itself is evaluated against a page that cannot run it — silently lost
+  /// instead of queued.
   Future<String?> Function(String js)? _evaluateJavascript;
   Future<String?> Function(String js)? get evaluateJavascript => _evaluateJavascript;
   set evaluateJavascript(Future<String?> Function(String js)? fn) {
+    final bool isNewChannel = fn != null && !identical(fn, _evaluateJavascript);
     _evaluateJavascript = fn;
+    if (isNewChannel) _isReady = false;
     _flushIfReady();
   }
 
