@@ -68,7 +68,10 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     outline: none;
     overflow-y: auto;
     word-wrap: break-word;
-    white-space: pre-wrap;
+    /* Whitespace collapses, as it does in every browser and mail client. Under pre-wrap Chrome
+       inserts a literal newline for Shift+Enter instead of a <br>, and the exported HTML then
+       reads as a plain space wherever it lands. */
+    white-space: normal;
   }
 
   /* Slim scrollbar on the editor so long bodies show a scroll indicator on the right. */
