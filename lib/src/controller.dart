@@ -46,6 +46,17 @@ class RichEditorController extends ChangeNotifier {
   double? _contentHeight;
   double? get contentHeight => _contentHeight;
 
+  double? _caretTop;
+  double? _caretBottom;
+
+  /// Top and bottom of the line the caret is on, measured from the top of the document — the same
+  /// origin as [contentHeight], so a host can use them against the height it sizes the editor to.
+  ///
+  /// Reported in auto-height mode only, where this editor has no scroll of its own and the host is
+  /// the only thing that can bring the caret into view. Null until the first report.
+  double? get caretTop => _caretTop;
+  double? get caretBottom => _caretBottom;
+
   /// Callback for content changes.
   ContentChangedCallback? onContentChanged;
 
@@ -225,6 +236,18 @@ class RichEditorController extends ChangeNotifier {
           notifyListeners();
           break;
 
+        case 'caretMoved':
+          final double? caretTop = (data['top'] as num?)?.toDouble();
+          final double? caretBottom = (data['bottom'] as num?)?.toDouble();
+          if (caretTop == null || caretBottom == null) break;
+          // Every keystroke and every arrow key reports, and most land on the same line — a host that
+          // scrolls to the caret would otherwise be asked to do it again for no movement.
+          if (caretTop == _caretTop && caretBottom == _caretBottom) break;
+          _caretTop = caretTop;
+          _caretBottom = caretBottom;
+          notifyListeners();
+          break;
+
         case 'focus':
           _hasFocus = true;
           notifyListeners();
@@ -347,7 +370,7 @@ class RichEditorController extends ChangeNotifier {
   /// When [value] is true the editor grows to fit its content and reports its
   /// height (via `heightChanged`), so a parent scroll view can scroll through
   /// the whole body. When false it reverts to a fixed height with its own inner
-  /// scroll, and the stale [contentHeight] is dropped so the next build falls
+  /// scroll, and the stale [contentHeight] (and caret) is dropped so the next build falls
   /// back to the host-provided height.
   void setAutoHeight(bool value) {
     // Remembered so a later editor can pick it up on its own 'ready' — see handleMessage.
@@ -358,7 +381,11 @@ class RichEditorController extends ChangeNotifier {
     // dispatched from a dispose() reaches listeners whose elements are mid-unmount — asking them to
     // rebuild while the widget tree is locked, which throws. Nothing is lost: whichever editor renders
     // next reads the cleared value on its first build.
-    if (!value) _contentHeight = null;
+    if (!value) {
+      _contentHeight = null;
+      _caretTop = null;
+      _caretBottom = null;
+    }
   }
 
   // -----------------------------------------------------------------------

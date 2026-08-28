@@ -642,6 +642,35 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     sendToFlutter({ type: 'heightChanged', height: document.body.scrollHeight });
   }
 
+  // Where the caret is inside this document, so a host that owns the scroll can keep it in view.
+  //
+  // Only meaningful in auto-height mode: there this frame has no scroll of its own (see
+  // setAutoHeight), so the browser cannot bring the caret into view itself and the host — which sizes
+  // this frame and scrolls its own window onto it — is the only thing that can. Offsets are measured
+  // from the same origin as the reported height, so the host can use them against that height
+  // directly.
+  function reportCaret() {
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    var range = sel.getRangeAt(0);
+    if (!editor.contains(range.startContainer)) return;
+    var rect = range.getBoundingClientRect();
+    // A collapsed caret on an empty line (<div><br></div>) measures nothing at all. That line's own
+    // block is exactly the box we want anyway, so fall back to it.
+    if (!rect || (rect.top === 0 && rect.bottom === 0)) {
+      var node = range.startContainer;
+      if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
+      if (!node || !node.getBoundingClientRect) return;
+      rect = node.getBoundingClientRect();
+    }
+    var origin = document.body.getBoundingClientRect().top;
+    sendToFlutter({
+      type: 'caretMoved',
+      top: Math.floor(rect.top - origin),
+      bottom: Math.ceil(rect.bottom - origin)
+    });
+  }
+
   // Read-only fit-to-width: wide content (e.g. a 500px signature table) would
   // overflow a narrow mobile viewport. Scale the whole body down with CSS zoom so
   // it fits the width — like Gmail's mobile "fit to width" — instead of needing an
@@ -721,8 +750,12 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
     if (!isComposing) {
       reportContent();
       // In auto-height mode the body must resize as the user types/pastes so the
-      // parent page-scroll always reaches the newest content.
-      if (autoHeight) reportHeight();
+      // parent page-scroll always reaches the newest content, and the caret it has to keep in view
+      // has just moved with the edit.
+      if (autoHeight) {
+        reportHeight();
+        reportCaret();
+      }
     }
   });
 
@@ -737,6 +770,9 @@ String generateEditorHtml(RichEditorTheme theme, {String channelId = ''}) {
 
   document.addEventListener('selectionchange', function() {
     reportSelectionStyle();
+    // Arrow keys and clicks move the caret without changing the content, and in auto-height mode the
+    // host still has to be able to follow it.
+    if (autoHeight) reportCaret();
   });
 
   editor.addEventListener('focus', function() {
